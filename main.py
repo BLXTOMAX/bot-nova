@@ -1583,11 +1583,11 @@ class NovaForgeBot(commands.Bot):
         guild_id = get_optional_int("GUILD_ID")
         if guild_id:
             guild_obj = discord.Object(id=guild_id)
-            self.tree.clear_commands(guild=None)
-            await self.tree.sync()
             self.tree.clear_commands(guild=guild_obj)
             self.tree.copy_global_to(guild=guild_obj)
             await self.tree.sync(guild=guild_obj)
+            self.tree.clear_commands(guild=None)
+            await self.tree.sync()
             logger.info("Commandes synchronisees uniquement sur le serveur %s", guild_id)
         else:
             await self.tree.sync()
