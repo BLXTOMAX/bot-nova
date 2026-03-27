@@ -40,6 +40,73 @@ WELCOME_CHANNEL_ID = 1484300875764858880
 AVAILABILITY_CHANNEL_ID = 1484300881779363891
 SITE_SHOWCASE_CHANNEL_ID = 1484598567887700160
 
+PRICING_PLANS = [
+    {
+        "name": "Starter",
+        "price": "99 EUR",
+        "old_price": "149 EUR",
+        "accent": "Reduction d'ouverture",
+        "target": "Ideal pour petit projet / lancement",
+        "delivery": "2 a 4 jours",
+        "color": discord.Color.blue(),
+        "included": [
+            "1 page moderne",
+            "Design responsive",
+            "Animations legeres",
+            "Structure simple et efficace",
+            "Suivi apres livraison si besoin",
+        ],
+        "excluded": [
+            "Identite visuelle premium",
+            "Pages supplementaires / structure business",
+            "Support premium prioritaire",
+            "Accompagnement branding / concept",
+        ],
+    },
+    {
+        "name": "Pro",
+        "price": "199 EUR",
+        "old_price": "349 EUR",
+        "accent": "Le plus demande",
+        "target": "Ideal pour business / serveur / shop",
+        "delivery": "3 a 5 jours",
+        "color": discord.Color.magenta(),
+        "included": [
+            "Jusqu'a 5 pages",
+            "Identite visuelle premium",
+            "Animations avancees",
+            "Structure optimisee projet / business",
+            "Integration d'appel a l'action",
+            "Suivi apres livraison si besoin",
+            "Support premium prioritaire",
+        ],
+        "excluded": [
+            "Accompagnement branding / concept complet",
+            "Experience 100% sur mesure",
+        ],
+    },
+    {
+        "name": "Ultra",
+        "price": "Sur devis",
+        "old_price": None,
+        "accent": "100% personnalise",
+        "target": "Ideal pour projet serieux / image forte",
+        "delivery": "Selon le projet",
+        "color": discord.Color.gold(),
+        "included": [
+            "Experience 100% sur mesure",
+            "Pages / sections selon le besoin",
+            "Animations poussees et effets premium",
+            "Branding complet",
+            "Accompagnement sur le concept",
+            "Support premium prioritaire",
+            "Suivi dedie apres livraison",
+            "Optimisation image / conversion / impact",
+        ],
+        "excluded": [],
+    },
+]
+
 COMPONENT_PREFIX = "novaforge_v3"
 PANEL_SELECT_ID = f"{COMPONENT_PREFIX}_ticket_select"
 RULES_ACCEPT_ID = f"{COMPONENT_PREFIX}_rules_accept"
@@ -843,6 +910,78 @@ def build_brief_embed(title: str, fields: List[tuple[str, str]]) -> discord.Embe
         embed.add_field(name=name, value=value[:1024] or "Non renseigne", inline=False)
     embed.set_footer(text="NovaForge • Brief Client")
     return embed
+
+
+def build_pricing_embeds() -> List[discord.Embed]:
+    overview = discord.Embed(
+        title="Tarifs NovaForge",
+        description=(
+            "Des offres claires pour choisir le pack qui correspond a ton projet.\n"
+            "Starter et Pro profitent actuellement d'un prix de lancement."
+        ),
+        color=discord.Color.blurple(),
+        timestamp=datetime.now(timezone.utc),
+    )
+    overview.add_field(
+        name="Comment lire l'offre",
+        value="✅ Inclus\n❌ Non inclus dans ce pack",
+        inline=True,
+    )
+    overview.add_field(
+        name="Commande",
+        value=(
+            f"Ouvre un ticket ici : <#{PANEL_CHANNEL_ID}>\n"
+            f"Ou regarde le site ici : <#{SITE_SHOWCASE_CHANNEL_ID}>"
+        ),
+        inline=True,
+    )
+    overview.set_footer(text="NovaForge | Tarifs")
+
+    embeds: List[discord.Embed] = [overview]
+    for plan in PRICING_PLANS:
+        description_lines = [
+            f"**{plan['accent']}**",
+            f"Prix : **{plan['price']}**",
+        ]
+        if plan.get("old_price"):
+            description_lines.append(f"Au lieu de : ~~{plan['old_price']}~~")
+        description_lines.append(f"Livraison : **{plan['delivery']}**")
+        description_lines.append(plan["target"])
+
+        embed = discord.Embed(
+            title=plan["name"],
+            description="\n".join(description_lines),
+            color=plan["color"],
+            timestamp=datetime.now(timezone.utc),
+        )
+        embed.add_field(
+            name="Inclus",
+            value="\n".join(f"✅ {item}" for item in plan["included"])[:1024],
+            inline=False,
+        )
+        excluded = plan["excluded"]
+        embed.add_field(
+            name="Non inclus",
+            value=(
+                "\n".join(f"❌ {item}" for item in excluded)[:1024]
+                if excluded
+                else "Aucune limite standard, offre sur mesure."
+            ),
+            inline=False,
+        )
+        if plan["name"] == "Starter":
+            reason = (
+                "Parfait pour lancer une presence propre rapidement sans partir sur une grosse formule."
+            )
+        elif plan["name"] == "Pro":
+            reason = "Le meilleur equilibre entre image premium, contenu et support."
+        else:
+            reason = "Ideal si tu veux une creation plus haut de gamme, plus libre et plus accompagnee."
+        embed.add_field(name="Pourquoi le choisir", value=reason, inline=False)
+        embed.set_footer(text="NovaForge | Tarifs")
+        embeds.append(embed)
+
+    return embeds
 
 
 def get_ticket_brief_entry(channel_id: int) -> Optional[Dict[str, object]]:
@@ -2092,6 +2231,26 @@ async def avis(
         return
 
     await safe_followup(interaction, f"Merci, ton avis a ete publie dans {review_channel.mention}.")
+
+
+@bot.tree.command(name="tarif", description="Publie les packs et tarifs NovaForge")
+@app_commands.default_permissions(manage_guild=True)
+async def tarif(interaction: discord.Interaction) -> None:
+    if not await safe_defer(interaction):
+        return
+
+    channel = interaction.channel
+    if not interaction.guild or not isinstance(channel, discord.TextChannel):
+        await safe_followup(interaction, "Cette commande doit etre utilisee dans un salon texte du serveur.")
+        return
+
+    try:
+        await channel.send(content="**Voici les offres NovaForge actuellement disponibles :**", embeds=build_pricing_embeds())
+    except discord.Forbidden:
+        await safe_followup(interaction, "Je n'ai pas la permission d'envoyer le message dans ce salon.")
+        return
+
+    await safe_followup(interaction, f"Le message tarifs a ete publie dans {channel.mention}.")
 
 
 @bot.tree.command(name="server", description="Affiche les statistiques principales du serveur")
