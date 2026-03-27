@@ -35,6 +35,7 @@ PANEL_CHANNEL_ID = 1484300903010799777
 RULES_CHANNEL_ID = 1484300877316755626
 AUTO_ROLE_ID = 1484300777366225056
 REVIEW_CHANNEL_ID = 1484300896052707529
+REVIEWER_ROLE_ID = 1484300774350786640
 WELCOME_CHANNEL_ID = 1484300875764858880
 SITE_SHOWCASE_CHANNEL_ID = 1484598567887700160
 
@@ -447,6 +448,10 @@ def is_support_member(member: discord.Member) -> bool:
     if not support_role_id:
         return False
     return any(role.id == support_role_id for role in member.roles)
+
+
+def has_role(member: discord.Member, role_id: int) -> bool:
+    return any(role.id == role_id for role in member.roles)
 
 
 def can_manage_ticket(member: discord.Member, channel: discord.TextChannel) -> bool:
@@ -1888,6 +1893,20 @@ async def avis(
 
     if not interaction.guild or not isinstance(interaction.user, discord.Member):
         await safe_followup(interaction, "Cette commande doit etre utilisee dans le serveur.")
+        return
+
+    if interaction.channel_id != REVIEW_CHANNEL_ID:
+        await safe_followup(
+            interaction,
+            f"Utilise cette commande uniquement dans <#{REVIEW_CHANNEL_ID}>.",
+        )
+        return
+
+    if not has_role(interaction.user, REVIEWER_ROLE_ID) and not interaction.user.guild_permissions.administrator:
+        await safe_followup(
+            interaction,
+            "Tu n'as pas le role requis pour publier un avis.",
+        )
         return
 
     review_channel = interaction.guild.get_channel(REVIEW_CHANNEL_ID)
