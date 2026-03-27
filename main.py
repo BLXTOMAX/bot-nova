@@ -35,6 +35,8 @@ PANEL_CHANNEL_ID = 1484300903010799777
 RULES_CHANNEL_ID = 1484300877316755626
 AUTO_ROLE_ID = 1484300777366225056
 REVIEW_CHANNEL_ID = 1484300896052707529
+WELCOME_CHANNEL_ID = 1484300881779363891
+SITE_SHOWCASE_CHANNEL_ID = 1484598567887700160
 
 COMPONENT_PREFIX = "novaforge_v3"
 PANEL_SELECT_ID = f"{COMPONENT_PREFIX}_ticket_select"
@@ -681,6 +683,41 @@ def build_user_info_embed(member: discord.Member) -> discord.Embed:
     embed.add_field(name="Arrivee serveur", value=discord.utils.format_dt(member.joined_at, style="F") if member.joined_at else "Inconnue", inline=False)
     embed.add_field(name="Roles", value=role_text[:1024], inline=False)
     embed.set_footer(text=f"Demande pour {member.guild.name}")
+    return embed
+
+
+def build_welcome_embed(member: discord.Member) -> discord.Embed:
+    embed = discord.Embed(
+        title="Bienvenue sur NovaForge",
+        description=(
+            f"Heureux de t'accueillir {member.mention}.\n"
+            "Voici les salons les plus importants pour bien commencer sur le serveur."
+        ),
+        color=discord.Color.blurple(),
+        timestamp=datetime.now(timezone.utc),
+    )
+    embed.add_field(
+        name="Reglement",
+        value=f"Lis le reglement ici : <#{RULES_CHANNEL_ID}>",
+        inline=False,
+    )
+    embed.add_field(
+        name="Infos disponibilite",
+        value=f"Consulte les disponibilites ici : <#{WELCOME_CHANNEL_ID}>",
+        inline=False,
+    )
+    embed.add_field(
+        name="Mon site / mes offres",
+        value=f"Va voir ce que je propose ici : <#{SITE_SHOWCASE_CHANNEL_ID}>",
+        inline=False,
+    )
+    embed.add_field(
+        name="Questions / tickets",
+        value=f"Ouvre un ticket si besoin ici : <#{PANEL_CHANNEL_ID}>",
+        inline=False,
+    )
+    embed.set_thumbnail(url=member.display_avatar.url)
+    embed.set_footer(text="NovaForge • Bienvenue")
     return embed
 
 
@@ -1568,11 +1605,24 @@ class NovaForgeBot(commands.Bot):
         role = member.guild.get_role(AUTO_ROLE_ID)
         if role is None:
             logger.warning("Le role automatique %s est introuvable.", AUTO_ROLE_ID)
+        else:
+            try:
+                await member.add_roles(role, reason="Role automatique NovaForge")
+            except discord.Forbidden:
+                logger.warning("Impossible d'ajouter le role automatique a %s", member.id)
+
+        welcome_channel = member.guild.get_channel(WELCOME_CHANNEL_ID)
+        if not isinstance(welcome_channel, discord.TextChannel):
+            logger.warning("Le salon de bienvenue %s est introuvable.", WELCOME_CHANNEL_ID)
             return
+
         try:
-            await member.add_roles(role, reason="Role automatique NovaForge")
+            await welcome_channel.send(
+                content=f"Bienvenue {member.mention} sur **{member.guild.name}**.",
+                embed=build_welcome_embed(member),
+            )
         except discord.Forbidden:
-            logger.warning("Impossible d'ajouter le role automatique a %s", member.id)
+            logger.warning("Impossible d'envoyer le message de bienvenue pour %s", member.id)
 
     async def on_message(self, message: discord.Message) -> None:
         await self.process_commands(message)
