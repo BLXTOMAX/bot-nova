@@ -37,6 +37,7 @@ AUTO_ROLE_ID = 1484300777366225056
 REVIEW_CHANNEL_ID = 1484300896052707529
 REVIEWER_ROLE_ID = 1484300774350786640
 WELCOME_CHANNEL_ID = 1484300875764858880
+AVAILABILITY_CHANNEL_ID = 1484300881779363891
 SITE_SHOWCASE_CHANNEL_ID = 1484598567887700160
 
 COMPONENT_PREFIX = "novaforge_v3"
@@ -792,6 +793,7 @@ def build_user_info_embed(member: discord.Member) -> discord.Embed:
 
 
 def build_welcome_embed(member: discord.Member) -> discord.Embed:
+    total_members = member.guild.member_count or len(member.guild.members)
     embed = discord.Embed(
         title="Bienvenue sur NovaForge",
         description=(
@@ -808,7 +810,7 @@ def build_welcome_embed(member: discord.Member) -> discord.Embed:
     )
     embed.add_field(
         name="Infos disponibilite",
-        value=f"Consulte les disponibilites ici : <#{WELCOME_CHANNEL_ID}>",
+        value=f"Consulte les disponibilites ici : <#{AVAILABILITY_CHANNEL_ID}>",
         inline=False,
     )
     embed.add_field(
@@ -821,8 +823,13 @@ def build_welcome_embed(member: discord.Member) -> discord.Embed:
         value=f"Ouvre un ticket si besoin ici : <#{PANEL_CHANNEL_ID}>",
         inline=False,
     )
+    embed.add_field(
+        name="Petit mot",
+        value=f"Tu es le **{total_members}e membre** du serveur !",
+        inline=False,
+    )
     embed.set_thumbnail(url=member.display_avatar.url)
-    embed.set_footer(text="NovaForge • Bienvenue")
+    embed.set_footer(text="NovaForge | Bienvenue")
     return embed
 
 
@@ -1680,6 +1687,7 @@ class NovaForgeBot(commands.Bot):
         self.ticket_creation_in_progress: Set[str] = set()
         self.ai_response_in_progress: Set[int] = set()
         self.recent_joins: Dict[int, List[datetime]] = {}
+        self.recent_welcome_messages: Dict[Tuple[int, int], datetime] = {}
 
     async def setup_hook(self) -> None:
         self.add_view(TicketPanelView())
@@ -1773,9 +1781,23 @@ class NovaForgeBot(commands.Bot):
             except discord.Forbidden:
                 logger.warning("Impossible d'ajouter le role automatique a %s", member.id)
 
+        duplicate_window_seconds = 15
+        self.recent_welcome_messages = {
+            key: sent_at
+            for key, sent_at in self.recent_welcome_messages.items()
+            if (now - sent_at).total_seconds() <= 120
+        }
+        welcome_key = (member.guild.id, member.id)
+        last_sent_at = self.recent_welcome_messages.get(welcome_key)
+        if last_sent_at and (now - last_sent_at).total_seconds() <= duplicate_window_seconds:
+            logger.info("Message de bienvenue ignore en doublon pour %s", member.id)
+            return
+        self.recent_welcome_messages[welcome_key] = now
+
         welcome_channel = member.guild.get_channel(WELCOME_CHANNEL_ID)
         if not isinstance(welcome_channel, discord.TextChannel):
             logger.warning("Le salon de bienvenue %s est introuvable.", WELCOME_CHANNEL_ID)
+            self.recent_welcome_messages.pop(welcome_key, None)
             return
 
         try:
@@ -1784,6 +1806,7 @@ class NovaForgeBot(commands.Bot):
                 embed=build_welcome_embed(member),
             )
         except discord.Forbidden:
+            self.recent_welcome_messages.pop(welcome_key, None)
             logger.warning("Impossible d'envoyer le message de bienvenue pour %s", member.id)
 
     async def on_message(self, message: discord.Message) -> None:
