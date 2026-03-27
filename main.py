@@ -35,7 +35,7 @@ PANEL_CHANNEL_ID = 1484300903010799777
 RULES_CHANNEL_ID = 1484300877316755626
 AUTO_ROLE_ID = 1484300777366225056
 REVIEW_CHANNEL_ID = 1484300896052707529
-WELCOME_CHANNEL_ID = 1484300881779363891
+WELCOME_CHANNEL_ID = 1484300875764858880
 SITE_SHOWCASE_CHANNEL_ID = 1484598567887700160
 
 COMPONENT_PREFIX = "novaforge_v3"
@@ -1583,16 +1583,15 @@ class NovaForgeBot(commands.Bot):
         guild_id = get_optional_int("GUILD_ID")
         if guild_id:
             guild_obj = discord.Object(id=guild_id)
+            self.tree.clear_commands(guild=None)
+            await self.tree.sync()
             self.tree.clear_commands(guild=guild_obj)
             self.tree.copy_global_to(guild=guild_obj)
             await self.tree.sync(guild=guild_obj)
-            self.tree.clear_commands(guild=None)
-            await self.tree.sync()
-            logger.info("Commandes synchronisees sur le serveur %s", guild_id)
+            logger.info("Commandes synchronisees uniquement sur le serveur %s", guild_id)
         else:
-            self.tree.clear_commands(guild=None)
             await self.tree.sync()
-            logger.info("Commandes globales synchronisees.")
+            logger.warning("GUILD_ID manquant: commandes synchronisees globalement.")
 
     async def on_ready(self) -> None:
         logger.info("Connecte en tant que %s (%s)", self.user, self.user.id)
