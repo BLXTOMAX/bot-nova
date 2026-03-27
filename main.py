@@ -997,9 +997,15 @@ async def safe_defer(interaction: discord.Interaction, *, ephemeral: bool = True
         return False
 
 
-async def safe_followup(interaction: discord.Interaction, content: str, *, ephemeral: bool = True) -> None:
+async def safe_followup(
+    interaction: discord.Interaction,
+    content: Optional[str] = None,
+    *,
+    embed: Optional[discord.Embed] = None,
+    ephemeral: bool = True,
+) -> None:
     try:
-        await interaction.followup.send(content, ephemeral=ephemeral)
+        await interaction.followup.send(content=content, embed=embed, ephemeral=ephemeral)
     except discord.NotFound:
         logger.warning("Impossible d'envoyer la reponse de suivi, interaction expirée.")
 
