@@ -584,6 +584,106 @@ def build_review_embed(member: discord.Member, rating: int, review_text: str) ->
     return embed
 
 
+def build_server_stats_embed(guild: discord.Guild) -> discord.Embed:
+    members = guild.members
+    total_members = guild.member_count or len(members)
+    human_members = sum(1 for member in members if not member.bot)
+    bot_members = sum(1 for member in members if member.bot)
+    online_members = sum(1 for member in members if member.status != discord.Status.offline)
+    voice_members = sum(1 for member in members if member.voice and member.voice.channel)
+
+    embed = discord.Embed(
+        title=f"Statistiques de {guild.name}",
+        color=discord.Color.blurple(),
+        timestamp=datetime.now(timezone.utc),
+    )
+    if guild.icon:
+        embed.set_thumbnail(url=guild.icon.url)
+
+    embed.add_field(name="Membres", value=str(total_members), inline=True)
+    embed.add_field(name="Humains", value=str(human_members), inline=True)
+    embed.add_field(name="Bots", value=str(bot_members), inline=True)
+    embed.add_field(name="En ligne", value=str(online_members), inline=True)
+    embed.add_field(name="En vocal", value=str(voice_members), inline=True)
+    embed.add_field(name="Boosts", value=str(guild.premium_subscription_count or 0), inline=True)
+    embed.add_field(name="Salons texte", value=str(len(guild.text_channels)), inline=True)
+    embed.add_field(name="Salons vocaux", value=str(len(guild.voice_channels)), inline=True)
+    embed.add_field(name="Roles", value=str(len(guild.roles)), inline=True)
+    embed.add_field(
+        name="Creation",
+        value=discord.utils.format_dt(guild.created_at, style="F"),
+        inline=False,
+    )
+    embed.set_footer(text=f"ID serveur: {guild.id}")
+    return embed
+
+
+def build_online_embed(guild: discord.Guild) -> discord.Embed:
+    members = guild.members
+    online_members = [member for member in members if not member.bot and member.status != discord.Status.offline]
+    staff_online = [
+        member
+        for member in online_members
+        if member.guild_permissions.administrator
+        or member.guild_permissions.manage_guild
+        or member.guild_permissions.manage_channels
+    ]
+
+    status_counts = {
+        "En ligne": sum(1 for member in members if member.status == discord.Status.online),
+        "Inactif": sum(1 for member in members if member.status == discord.Status.idle),
+        "Ne pas deranger": sum(1 for member in members if member.status == discord.Status.dnd),
+        "Hors ligne": sum(1 for member in members if member.status == discord.Status.offline),
+    }
+
+    embed = discord.Embed(
+        title=f"Membres connectes - {guild.name}",
+        color=discord.Color.green(),
+        timestamp=datetime.now(timezone.utc),
+    )
+
+    embed.add_field(name="Humains connectes", value=str(len(online_members)), inline=True)
+    embed.add_field(name="Staff connecte", value=str(len(staff_online)), inline=True)
+    embed.add_field(
+        name="Repartition",
+        value="\n".join(f"{label}: {count}" for label, count in status_counts.items()),
+        inline=False,
+    )
+
+    if staff_online:
+        preview = ", ".join(member.mention for member in staff_online[:10])
+        if len(staff_online) > 10:
+            preview += f" ... (+{len(staff_online) - 10})"
+        embed.add_field(name="Staff actuellement la", value=preview, inline=False)
+    else:
+        embed.add_field(name="Staff actuellement la", value="Aucun staff connecte pour le moment.", inline=False)
+
+    return embed
+
+
+def build_user_info_embed(member: discord.Member) -> discord.Embed:
+    roles = [role.mention for role in reversed(member.roles) if role != member.guild.default_role]
+    role_text = ", ".join(roles[:12]) if roles else "Aucun role"
+    if len(roles) > 12:
+        role_text += f" ... (+{len(roles) - 12})"
+
+    embed = discord.Embed(
+        title=f"Infos membre - {member.display_name}",
+        color=member.color if member.color != discord.Color.default() else discord.Color.blurple(),
+        timestamp=datetime.now(timezone.utc),
+    )
+    embed.set_thumbnail(url=member.display_avatar.url)
+    embed.add_field(name="Utilisateur", value=f"{member.mention}\n`{member}`", inline=False)
+    embed.add_field(name="ID", value=str(member.id), inline=True)
+    embed.add_field(name="Statut", value=str(member.status).replace("_", " "), inline=True)
+    embed.add_field(name="Bot", value="Oui" if member.bot else "Non", inline=True)
+    embed.add_field(name="Compte cree", value=discord.utils.format_dt(member.created_at, style="F"), inline=False)
+    embed.add_field(name="Arrivee serveur", value=discord.utils.format_dt(member.joined_at, style="F") if member.joined_at else "Inconnue", inline=False)
+    embed.add_field(name="Roles", value=role_text[:1024], inline=False)
+    embed.set_footer(text=f"Demande pour {member.guild.name}")
+    return embed
+
+
 def build_brief_embed(title: str, fields: List[tuple[str, str]]) -> discord.Embed:
     embed = discord.Embed(
         title=title,
@@ -1743,6 +1843,59 @@ async def avis(
         return
 
     await safe_followup(interaction, f"Merci, ton avis a ete publie dans {review_channel.mention}.")
+
+
+@bot.tree.command(name="server", description="Affiche les statistiques principales du serveur")
+async def server_stats(interaction: discord.Interaction) -> None:
+    if not await safe_defer(interaction):
+        return
+
+    if not interaction.guild:
+        await safe_followup(interaction, "Cette commande doit etre utilisee dans le serveur.")
+        return
+
+    await safe_followup(interaction, embed=build_server_stats_embed(interaction.guild))
+
+
+@bot.tree.command(name="online", description="Affiche combien de membres sont connectes")
+async def online_stats(interaction: discord.Interaction) -> None:
+    if not await safe_defer(interaction):
+        return
+
+    if not interaction.guild:
+        await safe_followup(interaction, "Cette commande doit etre utilisee dans le serveur.")
+        return
+
+    await safe_followup(interaction, embed=build_online_embed(interaction.guild))
+
+
+@bot.tree.command(name="userinfo", description="Affiche les informations d'un membre")
+@app_commands.describe(member="Le membre a inspecter")
+async def user_info(interaction: discord.Interaction, member: Optional[discord.Member] = None) -> None:
+    if not await safe_defer(interaction):
+        return
+
+    if not interaction.guild or not isinstance(interaction.user, discord.Member):
+        await safe_followup(interaction, "Cette commande doit etre utilisee dans le serveur.")
+        return
+
+    target = member or interaction.user
+    await safe_followup(interaction, embed=build_user_info_embed(target))
+
+
+@bot.tree.command(name="ping", description="Affiche la latence du bot")
+async def ping_bot(interaction: discord.Interaction) -> None:
+    if not await safe_defer(interaction):
+        return
+
+    latency_ms = round(bot.latency * 1000)
+    embed = discord.Embed(
+        title="Ping du bot",
+        description=f"Latence actuelle: **{latency_ms} ms**",
+        color=discord.Color.green() if latency_ms < 200 else discord.Color.orange(),
+        timestamp=datetime.now(timezone.utc),
+    )
+    await safe_followup(interaction, embed=embed)
 
 
 @bot.tree.command(name="blacklist", description="Blacklist un membre du systeme de tickets")
