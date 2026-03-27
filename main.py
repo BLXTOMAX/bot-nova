@@ -71,6 +71,16 @@ DEFAULT_BLACKLIST: Dict[str, Dict[str, str]] = {}
 DEFAULT_WARNINGS: Dict[str, List[Dict[str, str]]] = {}
 DEFAULT_TICKET_BRIEFS: Dict[str, Dict[str, object]] = {}
 
+
+def make_default_antiraid_config() -> Dict[str, object]:
+    return {
+        "enabled": True,
+        "join_threshold": 5,
+        "join_window_seconds": 20,
+        "account_age_warning_hours": 24,
+        "guilds": {},
+    }
+
 TICKET_CATEGORIES = {
     "acheter_site": {
         "label": "Acheter un site",
@@ -264,6 +274,7 @@ def load_state() -> Dict[str, object]:
             "ticket_blacklist": DEFAULT_BLACKLIST.copy(),
             "warnings": DEFAULT_WARNINGS.copy(),
             "ticket_briefs": DEFAULT_TICKET_BRIEFS.copy(),
+            "antiraid": make_default_antiraid_config(),
         }
 
     try:
@@ -279,6 +290,15 @@ def load_state() -> Dict[str, object]:
     state.setdefault("ticket_blacklist", DEFAULT_BLACKLIST.copy())
     state.setdefault("warnings", DEFAULT_WARNINGS.copy())
     state.setdefault("ticket_briefs", DEFAULT_TICKET_BRIEFS.copy())
+    antiraid = state.get("antiraid")
+    if not isinstance(antiraid, dict):
+        antiraid = make_default_antiraid_config()
+    default_antiraid = make_default_antiraid_config()
+    for key, value in default_antiraid.items():
+        antiraid.setdefault(key, value if key != "guilds" else {})
+    if not isinstance(antiraid.get("guilds"), dict):
+        antiraid["guilds"] = {}
+    state["antiraid"] = antiraid
     return state
 
 
@@ -452,6 +472,86 @@ def is_support_member(member: discord.Member) -> bool:
 
 def has_role(member: discord.Member, role_id: int) -> bool:
     return any(role.id == role_id for role in member.roles)
+
+
+def get_antiraid_config() -> Dict[str, object]:
+    antiraid = bot.state.setdefault("antiraid", make_default_antiraid_config())
+    if not isinstance(antiraid.get("guilds"), dict):
+        antiraid["guilds"] = {}
+    return antiraid
+
+
+def get_antiraid_guild_state(guild_id: int) -> Dict[str, object]:
+    antiraid = get_antiraid_config()
+    guilds = antiraid.setdefault("guilds", {})
+    state = guilds.setdefault(
+        str(guild_id),
+        {
+            "lockdown_active": False,
+            "previous_verification_level": None,
+            "last_trigger_at": None,
+        },
+    )
+    return state
+
+
+def is_antiraid_enabled() -> bool:
+    antiraid = get_antiraid_config()
+    return bool(antiraid.get("enabled", True))
+
+
+def build_antiraid_status_embed(guild: discord.Guild) -> discord.Embed:
+    antiraid = get_antiraid_config()
+    guild_state = get_antiraid_guild_state(guild.id)
+    embed = discord.Embed(
+        title=f"Anti-raid - {guild.name}",
+        color=discord.Color.red() if guild_state.get("lockdown_active") else discord.Color.blurple(),
+        timestamp=datetime.now(timezone.utc),
+    )
+    embed.add_field(name="Protection", value="Active" if antiraid.get("enabled", True) else "Desactivee", inline=True)
+    embed.add_field(name="Lockdown", value="Actif" if guild_state.get("lockdown_active") else "Inactif", inline=True)
+    embed.add_field(name="Seuil", value=f"{antiraid.get('join_threshold', 5)} joins / {antiraid.get('join_window_seconds', 20)} sec", inline=False)
+    embed.add_field(name="Comptes recents", value=f"Alerte si compte < {antiraid.get('account_age_warning_hours', 24)}h", inline=False)
+    if guild_state.get("last_trigger_at"):
+        embed.add_field(name="Dernier declenchement", value=str(guild_state.get("last_trigger_at")), inline=False)
+    embed.set_footer(text="NovaForge • Anti-raid")
+    return embed
+
+
+async def set_lockdown_state(guild: discord.Guild, enabled: bool, *, reason: str) -> Tuple[bool, str]:
+    guild_state = get_antiraid_guild_state(guild.id)
+    if enabled and guild_state.get("lockdown_active"):
+        return False, "Le lockdown est deja actif."
+    if not enabled and not guild_state.get("lockdown_active"):
+        return False, "Le lockdown est deja inactif."
+
+    try:
+        if enabled:
+            guild_state["previous_verification_level"] = int(guild.verification_level.value)
+            await guild.edit(
+                verification_level=discord.VerificationLevel.highest,
+                reason=reason,
+            )
+            guild_state["lockdown_active"] = True
+            guild_state["last_trigger_at"] = datetime.now(timezone.utc).isoformat()
+        else:
+            previous_value = guild_state.get("previous_verification_level")
+            previous_level = (
+                discord.VerificationLevel(previous_value)
+                if isinstance(previous_value, int)
+                else discord.VerificationLevel.medium
+            )
+            await guild.edit(
+                verification_level=previous_level,
+                reason=reason,
+            )
+            guild_state["lockdown_active"] = False
+            guild_state["previous_verification_level"] = None
+    except discord.Forbidden:
+        return False, "Je n'ai pas la permission de modifier la verification du serveur."
+
+    save_state(bot.state)
+    return True, "ok"
 
 
 def can_manage_ticket(member: discord.Member, channel: discord.TextChannel) -> bool:
@@ -1579,6 +1679,7 @@ class NovaForgeBot(commands.Bot):
         self.state: Dict[str, object] = load_state()
         self.ticket_creation_in_progress: Set[str] = set()
         self.ai_response_in_progress: Set[int] = set()
+        self.recent_joins: Dict[int, List[datetime]] = {}
 
     async def setup_hook(self) -> None:
         self.add_view(TicketPanelView())
@@ -1616,6 +1717,53 @@ class NovaForgeBot(commands.Bot):
                     logger.warning("Impossible de rafraichir le ticket %s au demarrage.", channel.id)
 
     async def on_member_join(self, member: discord.Member) -> None:
+        now = datetime.now(timezone.utc)
+        if is_antiraid_enabled():
+            antiraid = get_antiraid_config()
+            join_window_seconds = int(antiraid.get("join_window_seconds", 20))
+            join_threshold = int(antiraid.get("join_threshold", 5))
+            account_age_warning_hours = int(antiraid.get("account_age_warning_hours", 24))
+            guild_joins = self.recent_joins.setdefault(member.guild.id, [])
+            guild_joins = [
+                joined_at
+                for joined_at in guild_joins
+                if (now - joined_at).total_seconds() <= join_window_seconds
+            ]
+            guild_joins.append(now)
+            self.recent_joins[member.guild.id] = guild_joins
+
+            account_age_hours = (now - member.created_at).total_seconds() / 3600
+            if account_age_hours <= account_age_warning_hours:
+                await send_log_message(
+                    member.guild,
+                    title="Compte recent detecte",
+                    description=(
+                        f"{member.mention} vient de rejoindre.\n"
+                        f"Compte cree il y a environ **{account_age_hours:.1f}h**."
+                    ),
+                    color=discord.Color.orange(),
+                )
+
+            guild_state = get_antiraid_guild_state(member.guild.id)
+            if len(guild_joins) >= join_threshold and not guild_state.get("lockdown_active"):
+                success, message = await set_lockdown_state(
+                    member.guild,
+                    True,
+                    reason=f"Anti-raid automatique: {len(guild_joins)} joins en {join_window_seconds}s",
+                )
+                if success:
+                    await send_log_message(
+                        member.guild,
+                        title="Anti-raid declenche",
+                        description=(
+                            f"Le mode lockdown a ete active automatiquement.\n"
+                            f"Raison: **{len(guild_joins)} arrivées en {join_window_seconds} secondes**."
+                        ),
+                        color=discord.Color.red(),
+                    )
+                else:
+                    logger.warning("Impossible d'activer l'anti-raid automatiquement: %s", message)
+
         role = member.guild.get_role(AUTO_ROLE_ID)
         if role is None:
             logger.warning("Le role automatique %s est introuvable.", AUTO_ROLE_ID)
@@ -2122,6 +2270,88 @@ async def unban_member(
         return
 
     await safe_followup(interaction, f"L'utilisateur `{target_id}` a ete debanni.")
+
+
+@bot.tree.command(name="raidmode", description="Active, desactive ou affiche l'etat de l'anti-raid")
+@app_commands.default_permissions(manage_guild=True)
+@app_commands.describe(action="Choisis l'action a effectuer")
+@app_commands.choices(
+    action=[
+        app_commands.Choice(name="status", value="status"),
+        app_commands.Choice(name="on", value="on"),
+        app_commands.Choice(name="off", value="off"),
+    ]
+)
+async def raidmode(
+    interaction: discord.Interaction,
+    action: app_commands.Choice[str],
+) -> None:
+    if not await safe_defer(interaction):
+        return
+
+    if not interaction.guild:
+        await safe_followup(interaction, "Cette commande doit etre utilisee dans le serveur.")
+        return
+
+    antiraid = get_antiraid_config()
+    if action.value == "status":
+        await safe_followup(interaction, embed=build_antiraid_status_embed(interaction.guild))
+        return
+
+    antiraid["enabled"] = action.value == "on"
+    save_state(bot.state)
+    await safe_followup(
+        interaction,
+        f"Protection anti-raid {'activee' if antiraid['enabled'] else 'desactivee'}.",
+    )
+
+
+@bot.tree.command(name="lockdown", description="Active ou retire le lockdown du serveur")
+@app_commands.default_permissions(manage_guild=True)
+@app_commands.describe(action="Choisis l'action a effectuer")
+@app_commands.choices(
+    action=[
+        app_commands.Choice(name="status", value="status"),
+        app_commands.Choice(name="on", value="on"),
+        app_commands.Choice(name="off", value="off"),
+    ]
+)
+async def lockdown(
+    interaction: discord.Interaction,
+    action: app_commands.Choice[str],
+) -> None:
+    if not await safe_defer(interaction):
+        return
+
+    if not interaction.guild:
+        await safe_followup(interaction, "Cette commande doit etre utilisee dans le serveur.")
+        return
+
+    if action.value == "status":
+        await safe_followup(interaction, embed=build_antiraid_status_embed(interaction.guild))
+        return
+
+    success, message = await set_lockdown_state(
+        interaction.guild,
+        action.value == "on",
+        reason=f"Lockdown modifie par {interaction.user}",
+    )
+    if not success:
+        await safe_followup(interaction, message)
+        return
+
+    await send_log_message(
+        interaction.guild,
+        title="Lockdown modifie",
+        description=(
+            f"{interaction.user.mention} a {'active' if action.value == 'on' else 'retire'} le lockdown."
+        ),
+        color=discord.Color.red() if action.value == "on" else discord.Color.green(),
+    )
+    await safe_followup(
+        interaction,
+        f"Lockdown {'active' if action.value == 'on' else 'retire'} avec succes.",
+    )
 
 
 def main() -> None:
