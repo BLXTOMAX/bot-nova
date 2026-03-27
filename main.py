@@ -984,6 +984,63 @@ def build_pricing_embeds() -> List[discord.Embed]:
     return embeds
 
 
+async def find_recent_welcome_messages(
+    channel: discord.TextChannel,
+    member: discord.Member,
+    *,
+    limit: int = 12,
+    max_age_seconds: int = 180,
+) -> List[discord.Message]:
+    mention_tokens = {f"<@{member.id}>", f"<@!{member.id}>"}
+    now = datetime.now(timezone.utc)
+    matches: List[discord.Message] = []
+
+    try:
+        async for message in channel.history(limit=limit):
+            if not message.author.bot:
+                continue
+            if not any(token in message.content for token in mention_tokens):
+                continue
+            if not message.embeds:
+                continue
+            first_embed = message.embeds[0]
+            if first_embed.title != "Bienvenue sur NovaForge":
+                continue
+            if (now - message.created_at).total_seconds() > max_age_seconds:
+                continue
+            matches.append(message)
+    except discord.Forbidden:
+        logger.warning("Impossible de lire l'historique du salon de bienvenue %s.", channel.id)
+    except discord.HTTPException:
+        logger.warning("Lecture de l'historique du salon de bienvenue impossible pour %s.", channel.id)
+
+    matches.sort(key=lambda item: item.created_at)
+    return matches
+
+
+async def cleanup_recent_welcome_duplicates(
+    channel: discord.TextChannel,
+    member: discord.Member,
+    *,
+    keep_message_id: Optional[int] = None,
+) -> None:
+    matches = await find_recent_welcome_messages(channel, member)
+    if len(matches) <= 1:
+        return
+
+    message_to_keep = next((msg for msg in matches if msg.id == keep_message_id), matches[0])
+    for message in matches:
+        if message.id == message_to_keep.id:
+            continue
+        try:
+            await message.delete()
+        except discord.Forbidden:
+            logger.warning("Impossible de supprimer un doublon de bienvenue dans %s.", channel.id)
+            return
+        except discord.HTTPException:
+            logger.warning("Suppression d'un doublon de bienvenue echouee dans %s.", channel.id)
+
+
 def get_ticket_brief_entry(channel_id: int) -> Optional[Dict[str, object]]:
     entry = bot.state.get("ticket_briefs", {}).get(str(channel_id))
     if isinstance(entry, dict):
@@ -1939,10 +1996,26 @@ class NovaForgeBot(commands.Bot):
             self.recent_welcome_messages.pop(welcome_key, None)
             return
 
+        existing_welcome_messages = await find_recent_welcome_messages(welcome_channel, member)
+        if existing_welcome_messages:
+            logger.info("Message de bienvenue deja present pour %s, envoi ignore.", member.id)
+            self.recent_welcome_messages[welcome_key] = now
+            await cleanup_recent_welcome_duplicates(
+                welcome_channel,
+                member,
+                keep_message_id=existing_welcome_messages[0].id,
+            )
+            return
+
         try:
-            await welcome_channel.send(
+            sent_message = await welcome_channel.send(
                 content=f"Bienvenue {member.mention} sur **{member.guild.name}**.",
                 embed=build_welcome_embed(member),
+            )
+            await cleanup_recent_welcome_duplicates(
+                welcome_channel,
+                member,
+                keep_message_id=sent_message.id,
             )
         except discord.Forbidden:
             self.recent_welcome_messages.pop(welcome_key, None)
