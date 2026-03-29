@@ -2151,30 +2151,17 @@ class NovaForgeBot(commands.Bot):
             self.recent_welcome_messages.pop(welcome_key, None)
             return
 
-        existing_welcome_messages = await find_recent_welcome_messages(welcome_channel, member)
-        if existing_welcome_messages:
-            logger.info("Message de bienvenue deja present pour %s, envoi ignore.", member.id)
-            self.recent_welcome_messages[welcome_key] = now
-            await cleanup_recent_welcome_duplicates(
-                welcome_channel,
-                member,
-                keep_message_id=existing_welcome_messages[0].id,
-            )
-            return
-
         try:
-            sent_message = await welcome_channel.send(
+            await welcome_channel.send(
                 content=f"Bienvenue {member.mention} sur **{member.guild.name}**.",
                 embed=build_welcome_embed(member),
-            )
-            await cleanup_recent_welcome_duplicates(
-                welcome_channel,
-                member,
-                keep_message_id=sent_message.id,
             )
         except discord.Forbidden:
             self.recent_welcome_messages.pop(welcome_key, None)
             logger.warning("Impossible d'envoyer le message de bienvenue pour %s", member.id)
+        except discord.HTTPException:
+            self.recent_welcome_messages.pop(welcome_key, None)
+            logger.warning("Envoi du message de bienvenue echoue pour %s", member.id)
 
     async def on_message(self, message: discord.Message) -> None:
         await self.process_commands(message)
