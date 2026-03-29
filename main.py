@@ -142,8 +142,8 @@ CREATION_SHOWCASES = [
         "name": "Communautaire / Gaming",
         "emoji": "\U0001f3ae",
         "description": "Un apercu pour projet communautaire ou gaming, avec une ambiance plus dynamique et orientee communaute.",
-        "preview_url": "https://peppy-florentine-da88cb.netlify.app/",
-        "channel_id": 1486139574718566572,
+        "preview_url": "https://enchanting-marigold-e2326b.netlify.app/",
+        "channel_id": 1485826705032740935,
         "color": discord.Color.purple(),
     },
 ]
@@ -1100,6 +1100,11 @@ def build_creation_embeds() -> List[discord.Embed]:
         embed.add_field(
             name="\U0001f4cc Salon associe",
             value=f"<#{creation['channel_id']}>",
+            inline=False,
+        )
+        embed.add_field(
+            name="\U0001f4e9 Salon ticket",
+            value=f"Ouvre ton ticket ici : <#{PANEL_CHANNEL_ID}>",
             inline=False,
         )
         embed.add_field(
