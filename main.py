@@ -1113,6 +1113,27 @@ def build_creation_embeds() -> List[discord.Embed]:
     return embeds
 
 
+async def publish_creation_showcases(guild: discord.Guild, source_channel: discord.TextChannel) -> int:
+    sent_count = 0
+    overview_embed, *creation_embeds = build_creation_embeds()
+
+    await source_channel.send(
+        content="**🖼️ Voici quelques exemples de creations et previews disponibles chez NovaForge :**",
+        embed=overview_embed,
+    )
+
+    for creation, embed in zip(CREATION_SHOWCASES, creation_embeds):
+        target_channel = guild.get_channel(creation["channel_id"])
+        if not isinstance(target_channel, discord.TextChannel):
+            logger.warning("Salon de creation introuvable ou invalide: %s", creation["channel_id"])
+            continue
+
+        await target_channel.send(embed=embed)
+        sent_count += 1
+
+    return sent_count
+
+
 async def find_recent_welcome_messages(
     channel: discord.TextChannel,
     member: discord.Member,
@@ -2490,15 +2511,15 @@ async def creations(interaction: discord.Interaction) -> None:
         return
 
     try:
-        await channel.send(
-            content="**\U0001f5bc\ufe0f Voici quelques exemples de creations et previews disponibles chez NovaForge :**",
-            embeds=build_creation_embeds(),
-        )
+        sent_count = await publish_creation_showcases(interaction.guild, channel)
     except discord.Forbidden:
-        await safe_followup(interaction, "Je n'ai pas la permission d'envoyer le message dans ce salon.")
+        await safe_followup(interaction, "Je n'ai pas la permission d'envoyer un des messages de creations.")
         return
 
-    await safe_followup(interaction, f"Le message creations a ete publie dans {channel.mention}.")
+    await safe_followup(
+        interaction,
+        f"Les creations ont ete publiees : intro dans {channel.mention}, puis {sent_count} message(s) repartis dans les salons configures.",
+    )
 
 
 @bot.tree.command(name="server", description="Affiche les statistiques principales du serveur")
