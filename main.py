@@ -113,6 +113,41 @@ PAYMENT_METHODS = [
     "Revolut",
 ]
 
+CREATION_SHOWCASES = [
+    {
+        "name": "Shop",
+        "emoji": "\U0001f6cd\ufe0f",
+        "description": "Une maquette e-commerce pensee pour mettre les produits en avant et donner envie d'acheter.",
+        "preview_url": "https://singular-entremet-cc7bc7.netlify.app/",
+        "channel_id": 1485684169869889776,
+        "color": discord.Color.blue(),
+    },
+    {
+        "name": "Restauration",
+        "emoji": "\U0001f37d\ufe0f",
+        "description": "Un exemple de site pour restaurant avec une presentation claire, appetissante et moderne.",
+        "preview_url": "https://phenomenal-choux-e8605d.netlify.app/",
+        "channel_id": 1485684295761658087,
+        "color": discord.Color.orange(),
+    },
+    {
+        "name": "Commerce",
+        "emoji": "\U0001f3ec",
+        "description": "Une vitrine pro pour activite commerciale, avec une image serieuse et une navigation simple.",
+        "preview_url": "https://peppy-florentine-da88cb.netlify.app/",
+        "channel_id": 1486139574718566572,
+        "color": discord.Color.green(),
+    },
+    {
+        "name": "Communautaire / Gaming",
+        "emoji": "\U0001f3ae",
+        "description": "Un apercu pour projet communautaire ou gaming, avec une ambiance plus dynamique et orientee communaute.",
+        "preview_url": "https://peppy-florentine-da88cb.netlify.app/",
+        "channel_id": 1486139574718566572,
+        "color": discord.Color.purple(),
+    },
+]
+
 COMPONENT_PREFIX = "novaforge_v3"
 PANEL_SELECT_ID = f"{COMPONENT_PREFIX}_ticket_select"
 RULES_ACCEPT_ID = f"{COMPONENT_PREFIX}_rules_accept"
@@ -1025,6 +1060,57 @@ def build_payment_embed() -> discord.Embed:
     )
     embed.set_footer(text="NovaForge | Paiements")
     return embed
+
+
+def build_creation_embeds() -> List[discord.Embed]:
+    overview = discord.Embed(
+        title="\U0001f5bc\ufe0f Creations NovaForge",
+        description=(
+            "Voici quelques previews de creations pour te montrer le style, l'ambiance "
+            "et le niveau de rendu possible selon ton projet."
+        ),
+        color=discord.Color.blurple(),
+        timestamp=datetime.now(timezone.utc),
+    )
+    overview.add_field(
+        name="\U0001f517 Voir plus",
+        value=f"Retrouve aussi mes offres ici : <#{SITE_SHOWCASE_CHANNEL_ID}>",
+        inline=False,
+    )
+    overview.add_field(
+        name="\U0001f4e9 Commander",
+        value=f"Tu peux ouvrir un ticket directement ici : <#{PANEL_CHANNEL_ID}>",
+        inline=False,
+    )
+    overview.set_footer(text="NovaForge | Creations")
+
+    embeds: List[discord.Embed] = [overview]
+    for creation in CREATION_SHOWCASES:
+        embed = discord.Embed(
+            title=f"{creation['emoji']} {creation['name']}",
+            description=creation["description"],
+            color=creation["color"],
+            timestamp=datetime.now(timezone.utc),
+        )
+        embed.add_field(
+            name="\U0001f310 Preview du site",
+            value=creation["preview_url"],
+            inline=False,
+        )
+        embed.add_field(
+            name="\U0001f4cc Salon associe",
+            value=f"<#{creation['channel_id']}>",
+            inline=False,
+        )
+        embed.add_field(
+            name="\u2728 Pour quel type de projet ?",
+            value=f"Parfait si tu veux un rendu dans l'esprit **{creation['name']}**.",
+            inline=False,
+        )
+        embed.set_footer(text="NovaForge | Creations")
+        embeds.append(embed)
+
+    return embeds
 
 
 async def find_recent_welcome_messages(
@@ -2390,6 +2476,29 @@ async def paiement(interaction: discord.Interaction) -> None:
         return
 
     await safe_followup(interaction, f"Le message paiements a ete publie dans {channel.mention}.")
+
+
+@bot.tree.command(name="creations", description="Publie un message de presentation des creations")
+@app_commands.default_permissions(manage_guild=True)
+async def creations(interaction: discord.Interaction) -> None:
+    if not await safe_defer(interaction):
+        return
+
+    channel = interaction.channel
+    if not interaction.guild or not isinstance(channel, discord.TextChannel):
+        await safe_followup(interaction, "Cette commande doit etre utilisee dans un salon texte du serveur.")
+        return
+
+    try:
+        await channel.send(
+            content="**\U0001f5bc\ufe0f Voici quelques exemples de creations et previews disponibles chez NovaForge :**",
+            embeds=build_creation_embeds(),
+        )
+    except discord.Forbidden:
+        await safe_followup(interaction, "Je n'ai pas la permission d'envoyer le message dans ce salon.")
+        return
+
+    await safe_followup(interaction, f"Le message creations a ete publie dans {channel.mention}.")
 
 
 @bot.tree.command(name="server", description="Affiche les statistiques principales du serveur")
