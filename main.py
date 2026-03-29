@@ -107,6 +107,12 @@ PRICING_PLANS = [
     },
 ]
 
+PAYMENT_METHODS = [
+    "Carte bancaire",
+    "PayPal",
+    "Revolut",
+]
+
 COMPONENT_PREFIX = "novaforge_v3"
 PANEL_SELECT_ID = f"{COMPONENT_PREFIX}_ticket_select"
 RULES_ACCEPT_ID = f"{COMPONENT_PREFIX}_rules_accept"
@@ -982,6 +988,37 @@ def build_pricing_embeds() -> List[discord.Embed]:
         embeds.append(embed)
 
     return embeds
+
+
+def build_payment_embed() -> discord.Embed:
+    embed = discord.Embed(
+        title="Paiements NovaForge",
+        description=(
+            "Voici les moyens de paiement actuellement autorises pour commander chez NovaForge."
+        ),
+        color=discord.Color.blurple(),
+        timestamp=datetime.now(timezone.utc),
+    )
+    embed.add_field(
+        name="Moyens acceptes",
+        value="\n".join(f"- {method}" for method in PAYMENT_METHODS),
+        inline=False,
+    )
+    embed.add_field(
+        name="Non accepte",
+        value="- Crypto",
+        inline=False,
+    )
+    embed.add_field(
+        name="Commande",
+        value=(
+            f"Ouvre un ticket ici : <#{PANEL_CHANNEL_ID}>\n"
+            "Si tu veux confirmer un paiement ou poser une question, precise-le dans ton ticket."
+        ),
+        inline=False,
+    )
+    embed.set_footer(text="NovaForge | Paiements")
+    return embed
 
 
 async def find_recent_welcome_messages(
@@ -2324,6 +2361,29 @@ async def tarif(interaction: discord.Interaction) -> None:
         return
 
     await safe_followup(interaction, f"Le message tarifs a ete publie dans {channel.mention}.")
+
+
+@bot.tree.command(name="paiement", description="Publie les moyens de paiement autorises")
+@app_commands.default_permissions(manage_guild=True)
+async def paiement(interaction: discord.Interaction) -> None:
+    if not await safe_defer(interaction):
+        return
+
+    channel = interaction.channel
+    if not interaction.guild or not isinstance(channel, discord.TextChannel):
+        await safe_followup(interaction, "Cette commande doit etre utilisee dans un salon texte du serveur.")
+        return
+
+    try:
+        await channel.send(
+            content="**Voici les moyens de paiement autorises chez NovaForge :**",
+            embed=build_payment_embed(),
+        )
+    except discord.Forbidden:
+        await safe_followup(interaction, "Je n'ai pas la permission d'envoyer le message dans ce salon.")
+        return
+
+    await safe_followup(interaction, f"Le message paiements a ete publie dans {channel.mention}.")
 
 
 @bot.tree.command(name="server", description="Affiche les statistiques principales du serveur")
