@@ -992,7 +992,7 @@ def build_pricing_embeds() -> List[discord.Embed]:
 
 def build_payment_embed() -> discord.Embed:
     embed = discord.Embed(
-        title="Paiements NovaForge",
+        title="💳 Paiements NovaForge",
         description=(
             "Voici les moyens de paiement actuellement autorises pour commander chez NovaForge."
         ),
@@ -1000,17 +1000,23 @@ def build_payment_embed() -> discord.Embed:
         timestamp=datetime.now(timezone.utc),
     )
     embed.add_field(
-        name="Moyens acceptes",
-        value="\n".join(f"- {method}" for method in PAYMENT_METHODS),
+        name="✅ Moyens acceptes",
+        value="\n".join(
+            [
+                "💳 Carte bancaire",
+                "🅿️ PayPal",
+                "💸 Revolut",
+            ]
+        ),
         inline=False,
     )
     embed.add_field(
-        name="Non accepte",
-        value="- Crypto",
+        name="❌ Non accepte",
+        value="🪙 Crypto",
         inline=False,
     )
     embed.add_field(
-        name="Commande",
+        name="📩 Commande",
         value=(
             f"Ouvre un ticket ici : <#{PANEL_CHANNEL_ID}>\n"
             "Si tu veux confirmer un paiement ou poser une question, precise-le dans ton ticket."
@@ -2376,7 +2382,7 @@ async def paiement(interaction: discord.Interaction) -> None:
 
     try:
         await channel.send(
-            content="**Voici les moyens de paiement autorises chez NovaForge :**",
+            content="**💳 Voici les moyens de paiement autorises chez NovaForge :**",
             embed=build_payment_embed(),
         )
     except discord.Forbidden:
