@@ -5,7 +5,7 @@ import logging
 import os
 import urllib.error
 import urllib.request
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
@@ -188,6 +188,18 @@ def make_default_antiraid_config() -> Dict[str, object]:
         "join_window_seconds": 20,
         "account_age_warning_hours": 24,
         "guilds": {},
+    }
+
+
+def make_default_antispam_config() -> Dict[str, object]:
+    return {
+        "enabled": True,
+        "message_threshold": 5,
+        "window_seconds": 5,
+        "timeout_durations_seconds": [30, 120, 300],
+        "repeat_window_seconds": 1800,
+        "kick_after_offense": 4,
+        "notification_delete_after_seconds": 12,
     }
 
 TICKET_CATEGORIES = {
@@ -384,6 +396,7 @@ def load_state() -> Dict[str, object]:
             "warnings": DEFAULT_WARNINGS.copy(),
             "ticket_briefs": DEFAULT_TICKET_BRIEFS.copy(),
             "antiraid": make_default_antiraid_config(),
+            "antispam": make_default_antispam_config(),
         }
 
     try:
@@ -399,6 +412,7 @@ def load_state() -> Dict[str, object]:
     state.setdefault("ticket_blacklist", DEFAULT_BLACKLIST.copy())
     state.setdefault("warnings", DEFAULT_WARNINGS.copy())
     state.setdefault("ticket_briefs", DEFAULT_TICKET_BRIEFS.copy())
+
     antiraid = state.get("antiraid")
     if not isinstance(antiraid, dict):
         antiraid = make_default_antiraid_config()
@@ -408,6 +422,16 @@ def load_state() -> Dict[str, object]:
     if not isinstance(antiraid.get("guilds"), dict):
         antiraid["guilds"] = {}
     state["antiraid"] = antiraid
+
+    antispam = state.get("antispam")
+    if not isinstance(antispam, dict):
+        antispam = make_default_antispam_config()
+    default_antispam = make_default_antispam_config()
+    for key, value in default_antispam.items():
+        antispam.setdefault(key, value)
+    if not isinstance(antispam.get("timeout_durations_seconds"), list):
+        antispam["timeout_durations_seconds"] = default_antispam["timeout_durations_seconds"]
+    state["antispam"] = antispam
     return state
 
 
@@ -607,6 +631,32 @@ def get_antiraid_guild_state(guild_id: int) -> Dict[str, object]:
 def is_antiraid_enabled() -> bool:
     antiraid = get_antiraid_config()
     return bool(antiraid.get("enabled", True))
+
+
+def get_antispam_config() -> Dict[str, object]:
+    antispam = bot.state.setdefault("antispam", make_default_antispam_config())
+    defaults = make_default_antispam_config()
+    for key, value in defaults.items():
+        antispam.setdefault(key, value)
+    if not isinstance(antispam.get("timeout_durations_seconds"), list):
+        antispam["timeout_durations_seconds"] = defaults["timeout_durations_seconds"]
+    return antispam
+
+
+def is_antispam_enabled() -> bool:
+    antispam = get_antispam_config()
+    return bool(antispam.get("enabled", True))
+
+
+def format_duration_label(total_seconds: int) -> str:
+    if total_seconds < 60:
+        return f"{total_seconds} seconde{'s' if total_seconds > 1 else ''}"
+
+    minutes, seconds = divmod(total_seconds, 60)
+    if seconds == 0:
+        return f"{minutes} minute{'s' if minutes > 1 else ''}"
+
+    return f"{minutes} min {seconds:02d}s"
 
 
 def build_antiraid_status_embed(guild: discord.Guild) -> discord.Embed:
@@ -2039,6 +2089,8 @@ class NovaForgeBot(commands.Bot):
         self.ai_response_in_progress: Set[int] = set()
         self.recent_joins: Dict[int, List[datetime]] = {}
         self.recent_welcome_messages: Dict[Tuple[int, int], datetime] = {}
+        self.recent_member_messages: Dict[int, List[Tuple[datetime, int, int]]] = {}
+        self.antispam_offenses: Dict[int, List[datetime]] = {}
 
     async def setup_hook(self) -> None:
         self.add_view(TicketPanelView())
@@ -2074,6 +2126,166 @@ class NovaForgeBot(commands.Bot):
                     await update_ticket_message(channel)
                 except discord.HTTPException:
                     logger.warning("Impossible de rafraichir le ticket %s au demarrage.", channel.id)
+
+    def is_antispam_exempt(self, member: discord.Member) -> bool:
+        permissions = member.guild_permissions
+        return (
+            member.bot
+            or permissions.administrator
+            or permissions.manage_guild
+            or permissions.manage_messages
+            or permissions.moderate_members
+            or is_support_member(member)
+        )
+
+    async def delete_spam_messages(
+        self,
+        guild: discord.Guild,
+        events: List[Tuple[datetime, int, int]],
+    ) -> int:
+        deleted = 0
+        for _, channel_id, message_id in events:
+            channel = guild.get_channel(channel_id)
+            if not isinstance(channel, discord.TextChannel):
+                continue
+            try:
+                await channel.get_partial_message(message_id).delete()
+                deleted += 1
+            except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+                continue
+        return deleted
+
+    async def handle_antispam(self, message: discord.Message) -> bool:
+        if not is_antispam_enabled():
+            return False
+        if message.guild is None or not isinstance(message.author, discord.Member):
+            return False
+        if self.is_antispam_exempt(message.author):
+            return False
+
+        config = get_antispam_config()
+        threshold = max(2, int(config.get("message_threshold", 5)))
+        window_seconds = max(2, int(config.get("window_seconds", 5)))
+        repeat_window_seconds = max(60, int(config.get("repeat_window_seconds", 1800)))
+        notification_delete_after = max(
+            5, int(config.get("notification_delete_after_seconds", 12))
+        )
+
+        raw_durations = config.get("timeout_durations_seconds", [30, 120, 300])
+        timeout_durations = [
+            max(5, int(value))
+            for value in raw_durations
+            if isinstance(value, (int, float)) or str(value).isdigit()
+        ]
+        if not timeout_durations:
+            timeout_durations = [30, 120, 300]
+
+        kick_after_offense = max(
+            len(timeout_durations) + 1,
+            int(config.get("kick_after_offense", len(timeout_durations) + 1)),
+        )
+
+        now = datetime.now(timezone.utc)
+        member_id = message.author.id
+        message_events = self.recent_member_messages.setdefault(member_id, [])
+        message_events = [
+            event
+            for event in message_events
+            if (now - event[0]).total_seconds() <= window_seconds
+        ]
+        message_events.append((now, message.channel.id, message.id))
+        self.recent_member_messages[member_id] = message_events[-20:]
+
+        if len(message_events) < threshold:
+            return False
+
+        self.recent_member_messages[member_id] = []
+        deleted_messages = await self.delete_spam_messages(message.guild, message_events)
+
+        offense_history = self.antispam_offenses.setdefault(member_id, [])
+        offense_history = [
+            offense_at
+            for offense_at in offense_history
+            if (now - offense_at).total_seconds() <= repeat_window_seconds
+        ]
+        offense_history.append(now)
+        self.antispam_offenses[member_id] = offense_history
+        offense_level = len(offense_history)
+
+        reason_prefix = (
+            f"Anti-spam NovaForge: {len(message_events)} messages en {window_seconds}s"
+        )
+
+        if offense_level >= kick_after_offense:
+            try:
+                await message.author.kick(
+                    reason=f"{reason_prefix} | palier {offense_level}"
+                )
+                await send_log_message(
+                    message.guild,
+                    title="Membre expulse pour spam",
+                    description=(
+                        f"{message.author.mention} a ete expulse automatiquement.\n"
+                        f"Palier: **{offense_level}**\n"
+                        f"Messages detectes: **{len(message_events)} en {window_seconds}s**\n"
+                        f"Messages nettoyes: **{deleted_messages}**"
+                    ),
+                    color=discord.Color.red(),
+                )
+                try:
+                    await message.channel.send(
+                        (
+                            f"{message.author.mention} a ete expulse automatiquement pour spam "
+                            f"repete."
+                        ),
+                        delete_after=notification_delete_after,
+                    )
+                except discord.HTTPException:
+                    pass
+            except discord.Forbidden:
+                logger.warning(
+                    "Impossible d'expulser %s apres detection anti-spam.",
+                    message.author.id,
+                )
+            return True
+
+        timeout_seconds = timeout_durations[min(offense_level - 1, len(timeout_durations) - 1)]
+        timeout_until = now + timedelta(seconds=timeout_seconds)
+
+        try:
+            await message.author.edit(
+                timed_out_until=timeout_until,
+                reason=f"{reason_prefix} | palier {offense_level}",
+            )
+            await send_log_message(
+                message.guild,
+                title="Timeout automatique anti-spam",
+                description=(
+                    f"{message.author.mention} a ete mute automatiquement.\n"
+                    f"Palier: **{offense_level}**\n"
+                    f"Duree: **{format_duration_label(timeout_seconds)}**\n"
+                    f"Messages detectes: **{len(message_events)} en {window_seconds}s**\n"
+                    f"Messages nettoyes: **{deleted_messages}**"
+                ),
+                color=discord.Color.orange(),
+            )
+            try:
+                await message.channel.send(
+                    (
+                        f"{message.author.mention} anti-spam: timeout automatique "
+                        f"pendant **{format_duration_label(timeout_seconds)}**."
+                    ),
+                    delete_after=notification_delete_after,
+                )
+            except discord.HTTPException:
+                pass
+        except discord.Forbidden:
+            logger.warning(
+                "Impossible de timeout %s apres detection anti-spam.",
+                message.author.id,
+            )
+
+        return True
 
     async def on_member_join(self, member: discord.Member) -> None:
         now = datetime.now(timezone.utc)
@@ -2165,6 +2377,11 @@ class NovaForgeBot(commands.Bot):
 
     async def on_message(self, message: discord.Message) -> None:
         await self.process_commands(message)
+
+        if message.author.bot:
+            return
+        if await self.handle_antispam(message):
+            return
 
         if not should_answer_with_ai(message):
             return
@@ -2653,6 +2870,150 @@ async def clearwarnings_member(interaction: discord.Interaction, member: discord
         await safe_followup(interaction, f"{member.mention} n'avait aucun avertissement.")
         return
     await safe_followup(interaction, f"Les avertissements de {member.mention} ont ete effaces.")
+
+
+@bot.tree.command(name="clear", description="Supprime plusieurs messages dans un salon")
+@app_commands.default_permissions(manage_messages=True)
+@app_commands.describe(
+    amount="Nombre de messages a supprimer (1 a 100)",
+    member="Si precise, supprime seulement les messages de ce membre",
+    channel="Salon cible, sinon salon actuel",
+)
+async def clear_messages(
+    interaction: discord.Interaction,
+    amount: int,
+    member: Optional[discord.Member] = None,
+    channel: Optional[discord.TextChannel] = None,
+) -> None:
+    if not await safe_defer(interaction):
+        return
+
+    if not interaction.guild or not isinstance(interaction.user, discord.Member):
+        await safe_followup(interaction, "Cette commande doit etre utilisee dans le serveur.")
+        return
+
+    target_channel = channel or interaction.channel
+    if not isinstance(target_channel, discord.TextChannel):
+        await safe_followup(interaction, "Le salon cible doit etre un salon texte.")
+        return
+
+    if amount < 1 or amount > 100:
+        await safe_followup(interaction, "Le nombre doit etre compris entre 1 et 100.")
+        return
+
+    search_limit = min(max(amount * 5, amount), 1000)
+
+    messages_to_delete: List[discord.Message] = []
+    try:
+        async for history_message in target_channel.history(limit=search_limit):
+            if member is not None and history_message.author.id != member.id:
+                continue
+            messages_to_delete.append(history_message)
+            if len(messages_to_delete) >= amount:
+                break
+    except discord.Forbidden:
+        await safe_followup(interaction, "Je n'ai pas la permission de lire l'historique de ce salon.")
+        return
+    except discord.HTTPException:
+        await safe_followup(interaction, "Impossible de lire les messages de ce salon pour le moment.")
+        return
+
+    if not messages_to_delete:
+        await safe_followup(interaction, "Aucun message correspondant n'a ete supprime.")
+        return
+
+    try:
+        for target_message in messages_to_delete:
+            await target_message.delete()
+    except discord.Forbidden:
+        await safe_followup(interaction, "Je n'ai pas la permission de supprimer les messages dans ce salon.")
+        return
+    except discord.HTTPException:
+        await safe_followup(interaction, "Impossible de supprimer les messages pour le moment.")
+        return
+
+    deleted_count = len(messages_to_delete)
+
+    await send_log_message(
+        interaction.guild,
+        title="Messages supprimes",
+        description=(
+            f"{interaction.user.mention} a supprime **{deleted_count}** message(s) "
+            f"dans {target_channel.mention}"
+            + (f" pour {member.mention}" if member else "")
+            + "."
+        ),
+        color=discord.Color.orange(),
+    )
+    await safe_followup(
+        interaction,
+        f"Suppression terminee: **{deleted_count}** message(s) supprime(s) dans {target_channel.mention}.",
+    )
+
+
+@bot.tree.command(name="delmsg", description="Supprime un message precis via son ID")
+@app_commands.default_permissions(manage_messages=True)
+@app_commands.describe(
+    message_id="ID du message a supprimer",
+    channel="Salon du message, sinon salon actuel",
+)
+async def delete_message_by_id(
+    interaction: discord.Interaction,
+    message_id: str,
+    channel: Optional[discord.TextChannel] = None,
+) -> None:
+    if not await safe_defer(interaction):
+        return
+
+    if not interaction.guild:
+        await safe_followup(interaction, "Cette commande doit etre utilisee dans le serveur.")
+        return
+
+    target_channel = channel or interaction.channel
+    if not isinstance(target_channel, discord.TextChannel):
+        await safe_followup(interaction, "Le salon cible doit etre un salon texte.")
+        return
+
+    try:
+        target_message_id = int(message_id)
+    except ValueError:
+        await safe_followup(interaction, "L'ID du message n'est pas valide.")
+        return
+
+    try:
+        target_message = await target_channel.fetch_message(target_message_id)
+    except discord.NotFound:
+        await safe_followup(interaction, "Je n'ai pas trouve ce message dans le salon cible.")
+        return
+    except discord.Forbidden:
+        await safe_followup(interaction, "Je n'ai pas la permission de lire ce salon.")
+        return
+    except discord.HTTPException:
+        await safe_followup(interaction, "Impossible de recuperer ce message pour le moment.")
+        return
+
+    try:
+        await target_message.delete(reason=f"Suppression par {interaction.user}")
+    except discord.Forbidden:
+        await safe_followup(interaction, "Je n'ai pas la permission de supprimer ce message.")
+        return
+    except discord.HTTPException:
+        await safe_followup(interaction, "Impossible de supprimer ce message pour le moment.")
+        return
+
+    await send_log_message(
+        interaction.guild,
+        title="Message supprime",
+        description=(
+            f"{interaction.user.mention} a supprime le message `{target_message_id}` "
+            f"dans {target_channel.mention}."
+        ),
+        color=discord.Color.orange(),
+    )
+    await safe_followup(
+        interaction,
+        f"Le message `{target_message_id}` a ete supprime dans {target_channel.mention}.",
+    )
 
 
 @bot.tree.command(name="ban", description="Bannit un membre du serveur")
