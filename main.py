@@ -2445,7 +2445,7 @@ class NovaForgeBot(commands.Bot):
 bot = NovaForgeBot()
 
 
-@bot.tree.command(name="setup", description="Republie le panel ticket et le reglement")
+@bot.tree.command(name="setup", description="🎫 Republie le panel ticket et le reglement")
 @app_commands.default_permissions(manage_guild=True)
 async def setup(interaction: discord.Interaction) -> None:
     if not await safe_defer(interaction):
@@ -2486,7 +2486,7 @@ async def setup(interaction: discord.Interaction) -> None:
     )
 
 
-@bot.tree.command(name="close", description="Ferme le ticket courant")
+@bot.tree.command(name="close", description="🔒 Ferme le ticket courant")
 async def close(interaction: discord.Interaction) -> None:
     if not await safe_defer(interaction):
         return
@@ -2505,7 +2505,7 @@ async def close(interaction: discord.Interaction) -> None:
     await close_ticket_channel(channel, interaction.user)
 
 
-@bot.tree.command(name="claim", description="Claim ou libere le ticket courant")
+@bot.tree.command(name="claim", description="📌 Claim ou libere le ticket courant")
 async def claim(interaction: discord.Interaction) -> None:
     if not await safe_defer(interaction):
         return
@@ -2550,7 +2550,7 @@ async def claim(interaction: discord.Interaction) -> None:
     await safe_followup(interaction, "Ticket claim avec succes.")
 
 
-@bot.tree.command(name="add", description="Ajoute un membre au ticket")
+@bot.tree.command(name="add", description="➕ Ajoute un membre au ticket")
 @app_commands.describe(member="Le membre a ajouter")
 async def add_member(interaction: discord.Interaction, member: discord.Member) -> None:
     if not await safe_defer(interaction):
@@ -2585,7 +2585,7 @@ async def add_member(interaction: discord.Interaction, member: discord.Member) -
     await safe_followup(interaction, f"{member.mention} a ete ajoute au ticket.")
 
 
-@bot.tree.command(name="remove", description="Retire un membre du ticket")
+@bot.tree.command(name="remove", description="➖ Retire un membre du ticket")
 @app_commands.describe(member="Le membre a retirer")
 async def remove_member(interaction: discord.Interaction, member: discord.Member) -> None:
     if not await safe_defer(interaction):
@@ -2615,7 +2615,7 @@ async def remove_member(interaction: discord.Interaction, member: discord.Member
     await safe_followup(interaction, f"{member.mention} a ete retire du ticket.")
 
 
-@bot.tree.command(name="rename", description="Renomme le ticket courant")
+@bot.tree.command(name="rename", description="✏️ Renomme le ticket courant")
 @app_commands.describe(name="Le nouveau nom visible")
 async def rename_ticket(interaction: discord.Interaction, name: str) -> None:
     if not await safe_defer(interaction):
@@ -2643,7 +2643,7 @@ async def rename_ticket(interaction: discord.Interaction, name: str) -> None:
     await safe_followup(interaction, f"Le ticket a ete renomme en `{final_name}`.")
 
 
-@bot.tree.command(name="avis", description="Publie un avis client")
+@bot.tree.command(name="avis", description="⭐ Publie un avis client")
 @app_commands.describe(
     note="Ta note entre 1 et 5",
     ressenti="Ton ressenti sur ta commande et ton experience",
@@ -2697,7 +2697,7 @@ async def avis(
     await safe_followup(interaction, f"Merci, ton avis a ete publie dans {review_channel.mention}.")
 
 
-@bot.tree.command(name="tarif", description="Publie les packs et tarifs NovaForge")
+@bot.tree.command(name="tarif", description="💸 Publie les packs et tarifs NovaForge")
 @app_commands.default_permissions(manage_guild=True)
 async def tarif(interaction: discord.Interaction) -> None:
     if not await safe_defer(interaction):
@@ -2717,7 +2717,7 @@ async def tarif(interaction: discord.Interaction) -> None:
     await safe_followup(interaction, f"Le message tarifs a ete publie dans {channel.mention}.")
 
 
-@bot.tree.command(name="paiement", description="Publie les moyens de paiement autorises")
+@bot.tree.command(name="paiement", description="💳 Publie les moyens de paiement autorises")
 @app_commands.default_permissions(manage_guild=True)
 async def paiement(interaction: discord.Interaction) -> None:
     if not await safe_defer(interaction):
@@ -2740,7 +2740,7 @@ async def paiement(interaction: discord.Interaction) -> None:
     await safe_followup(interaction, f"Le message paiements a ete publie dans {channel.mention}.")
 
 
-@bot.tree.command(name="creations", description="Publie un message de presentation des creations")
+@bot.tree.command(name="creations", description="🖼️ Publie un message de presentation des creations")
 @app_commands.default_permissions(manage_guild=True)
 async def creations(interaction: discord.Interaction) -> None:
     if not await safe_defer(interaction):
@@ -2763,7 +2763,7 @@ async def creations(interaction: discord.Interaction) -> None:
     )
 
 
-@bot.tree.command(name="server", description="Affiche les statistiques principales du serveur")
+@bot.tree.command(name="server", description="📊 Affiche les statistiques principales du serveur")
 async def server_stats(interaction: discord.Interaction) -> None:
     if not await safe_defer(interaction):
         return
@@ -2775,7 +2775,7 @@ async def server_stats(interaction: discord.Interaction) -> None:
     await safe_followup(interaction, embed=build_server_stats_embed(interaction.guild))
 
 
-@bot.tree.command(name="online", description="Affiche combien de membres sont connectes")
+@bot.tree.command(name="online", description="🟢 Affiche combien de membres sont connectes")
 async def online_stats(interaction: discord.Interaction) -> None:
     if not await safe_defer(interaction):
         return
@@ -2787,7 +2787,7 @@ async def online_stats(interaction: discord.Interaction) -> None:
     await safe_followup(interaction, embed=build_online_embed(interaction.guild))
 
 
-@bot.tree.command(name="userinfo", description="Affiche les informations d'un membre")
+@bot.tree.command(name="userinfo", description="👤 Affiche les informations d'un membre")
 @app_commands.describe(member="Le membre a inspecter")
 async def user_info(interaction: discord.Interaction, member: Optional[discord.Member] = None) -> None:
     if not await safe_defer(interaction):
@@ -2801,7 +2801,7 @@ async def user_info(interaction: discord.Interaction, member: Optional[discord.M
     await safe_followup(interaction, embed=build_user_info_embed(target))
 
 
-@bot.tree.command(name="ping", description="Affiche la latence du bot")
+@bot.tree.command(name="ping", description="🏓 Affiche la latence du bot")
 async def ping_bot(interaction: discord.Interaction) -> None:
     if not await safe_defer(interaction):
         return
@@ -2816,77 +2816,7 @@ async def ping_bot(interaction: discord.Interaction) -> None:
     await safe_followup(interaction, embed=embed)
 
 
-@bot.tree.command(name="purge", description="Supprime le nombre de messages demande dans le salon")
-@app_commands.default_permissions(manage_messages=True)
-@app_commands.describe(amount="Nombre de messages a supprimer (entre 1 et 100)")
-async def purge_messages(
-    interaction: discord.Interaction,
-    amount: app_commands.Range[int, 1, 100],
-) -> None:
-    if not await safe_defer(interaction):
-        return
-
-    channel = interaction.channel
-    if not interaction.guild or not isinstance(channel, discord.TextChannel):
-        await safe_followup(
-            interaction,
-            "Cette commande doit etre utilisee dans un salon texte du serveur.",
-            emoji="❌",
-        )
-        return
-
-    bot_member = interaction.guild.me
-    if bot_member is None or not channel.permissions_for(bot_member).manage_messages:
-        await safe_followup(
-            interaction,
-            "Je n'ai pas la permission de gerer les messages dans ce salon.",
-            emoji="❌",
-        )
-        return
-
-    try:
-        deleted_messages = await channel.purge(limit=amount, check=lambda message: not message.pinned)
-    except discord.Forbidden:
-        await safe_followup(
-            interaction,
-            "Je n'ai pas la permission de supprimer les messages dans ce salon.",
-            emoji="❌",
-        )
-        return
-    except discord.HTTPException:
-        await safe_followup(
-            interaction,
-            "La purge a echoue. Reessaie dans quelques secondes.",
-            emoji="❌",
-        )
-        return
-
-    deleted_count = len(deleted_messages)
-    if deleted_count == 0:
-        await safe_followup(
-            interaction,
-            "Aucun message supprimable n'a ete trouve dans les derniers messages.",
-            emoji="⚠️",
-        )
-        return
-
-    await send_log_message(
-        interaction.guild,
-        title="Purge effectuee",
-        description=(
-            f"{interaction.user.mention} a supprime **{deleted_count}** message(s) "
-            f"dans {channel.mention}."
-        ),
-        color=discord.Color.orange(),
-    )
-    await safe_followup(
-        interaction,
-        f"{deleted_count} message(s) ont ete supprimes dans {channel.mention}.",
-        emoji="🧹",
-    )
-
-
-@bot.tree.command(name="blacklist", description="Blacklist un membre du systeme de tickets")
+@bot.tree.command(name="blacklist", description="⛔ Blacklist un membre du systeme de tickets")
 @app_commands.default_permissions(manage_guild=True)
 @app_commands.describe(member="Le membre a blacklist", reason="La raison de la blacklist")
 async def blacklist_member(interaction: discord.Interaction, member: discord.Member, reason: str) -> None:
@@ -2903,7 +2833,7 @@ async def blacklist_member(interaction: discord.Interaction, member: discord.Mem
     await safe_followup(interaction, f"{member.mention} a ete blacklist du systeme de tickets.")
 
 
-@bot.tree.command(name="unblacklist", description="Retire un membre de la blacklist tickets")
+@bot.tree.command(name="unblacklist", description="✅ Retire un membre de la blacklist tickets")
 @app_commands.default_permissions(manage_guild=True)
 @app_commands.describe(member="Le membre a retirer de la blacklist")
 async def unblacklist_member(interaction: discord.Interaction, member: discord.Member) -> None:
@@ -2919,7 +2849,7 @@ async def unblacklist_member(interaction: discord.Interaction, member: discord.M
     await safe_followup(interaction, f"{member.mention} a ete retire de la blacklist.")
 
 
-@bot.tree.command(name="warn", description="Ajoute un avertissement a un membre")
+@bot.tree.command(name="warn", description="⚠️ Ajoute un avertissement a un membre")
 @app_commands.default_permissions(moderate_members=True)
 @app_commands.describe(member="Le membre a avertir", reason="La raison de l'avertissement")
 async def warn_member(interaction: discord.Interaction, member: discord.Member, reason: str) -> None:
@@ -2939,7 +2869,7 @@ async def warn_member(interaction: discord.Interaction, member: discord.Member, 
     await safe_followup(interaction, f"{member.mention} a recu un avertissement. Total: {len(entries)}.")
 
 
-@bot.tree.command(name="warnings", description="Affiche les avertissements d'un membre")
+@bot.tree.command(name="warnings", description="📝 Affiche les avertissements d'un membre")
 @app_commands.default_permissions(moderate_members=True)
 @app_commands.describe(member="Le membre dont tu veux voir les avertissements")
 async def warnings_member(interaction: discord.Interaction, member: discord.Member) -> None:
@@ -2958,7 +2888,7 @@ async def warnings_member(interaction: discord.Interaction, member: discord.Memb
     await safe_followup(interaction, "\n".join(lines))
 
 
-@bot.tree.command(name="clearwarnings", description="Efface tous les avertissements d'un membre")
+@bot.tree.command(name="clearwarnings", description="🧽 Efface tous les avertissements d'un membre")
 @app_commands.default_permissions(moderate_members=True)
 @app_commands.describe(member="Le membre dont tu veux effacer les avertissements")
 async def clearwarnings_member(interaction: discord.Interaction, member: discord.Member) -> None:
@@ -2974,7 +2904,7 @@ async def clearwarnings_member(interaction: discord.Interaction, member: discord
     await safe_followup(interaction, f"Les avertissements de {member.mention} ont ete effaces.")
 
 
-@bot.tree.command(name="clear", description="Supprime plusieurs messages dans un salon")
+@bot.tree.command(name="clear", description="🧹 Supprime plusieurs messages dans un salon")
 @app_commands.default_permissions(manage_messages=True)
 @app_commands.describe(
     amount="Nombre de messages a supprimer (1 a 100)",
@@ -3000,41 +2930,41 @@ async def clear_messages(
         return
 
     if amount < 1 or amount > 100:
-        await safe_followup(interaction, "Le nombre doit etre compris entre 1 et 100.")
+        await safe_followup(interaction, "Le nombre doit etre compris entre 1 et 100.", emoji="❌")
         return
 
-    search_limit = min(max(amount * 5, amount), 1000)
-
-    messages_to_delete: List[discord.Message] = []
-    try:
-        async for history_message in target_channel.history(limit=search_limit):
-            if member is not None and history_message.author.id != member.id:
-                continue
-            messages_to_delete.append(history_message)
-            if len(messages_to_delete) >= amount:
-                break
-    except discord.Forbidden:
-        await safe_followup(interaction, "Je n'ai pas la permission de lire l'historique de ce salon.")
-        return
-    except discord.HTTPException:
-        await safe_followup(interaction, "Impossible de lire les messages de ce salon pour le moment.")
+    bot_member = interaction.guild.me
+    if bot_member is None or not target_channel.permissions_for(bot_member).manage_messages:
+        await safe_followup(
+            interaction,
+            "Je n'ai pas la permission de gerer les messages dans ce salon.",
+            emoji="❌",
+        )
         return
 
-    if not messages_to_delete:
-        await safe_followup(interaction, "Aucun message correspondant n'a ete supprime.")
-        return
+    search_limit = min(max(amount * 5, amount), 1000) if member else amount
 
     try:
-        for target_message in messages_to_delete:
-            await target_message.delete()
+        deleted_messages = await target_channel.purge(
+            limit=search_limit,
+            check=lambda history_message: not history_message.pinned
+            and (member is None or history_message.author.id == member.id),
+        )
     except discord.Forbidden:
-        await safe_followup(interaction, "Je n'ai pas la permission de supprimer les messages dans ce salon.")
+        await safe_followup(
+            interaction,
+            "Je n'ai pas la permission de supprimer les messages dans ce salon.",
+            emoji="❌",
+        )
         return
     except discord.HTTPException:
-        await safe_followup(interaction, "Impossible de supprimer les messages pour le moment.")
+        await safe_followup(interaction, "Impossible de supprimer les messages pour le moment.", emoji="❌")
         return
 
-    deleted_count = len(messages_to_delete)
+    deleted_count = len(deleted_messages)
+    if deleted_count == 0:
+        await safe_followup(interaction, "Aucun message correspondant n'a ete supprime.", emoji="⚠️")
+        return
 
     await send_log_message(
         interaction.guild,
@@ -3050,10 +2980,11 @@ async def clear_messages(
     await safe_followup(
         interaction,
         f"Suppression terminee: **{deleted_count}** message(s) supprime(s) dans {target_channel.mention}.",
+        emoji="🧹",
     )
 
 
-@bot.tree.command(name="delmsg", description="Supprime un message precis via son ID")
+@bot.tree.command(name="delmsg", description="🗑️ Supprime un message precis via son ID")
 @app_commands.default_permissions(manage_messages=True)
 @app_commands.describe(
     message_id="ID du message a supprimer",
@@ -3118,7 +3049,7 @@ async def delete_message_by_id(
     )
 
 
-@bot.tree.command(name="ban", description="Bannit un membre du serveur")
+@bot.tree.command(name="ban", description="🔨 Bannit un membre du serveur")
 @app_commands.default_permissions(ban_members=True)
 @app_commands.describe(member="Le membre a bannir", reason="La raison du ban")
 async def ban_member(
@@ -3145,7 +3076,7 @@ async def ban_member(
     await safe_followup(interaction, f"{member} a ete banni.")
 
 
-@bot.tree.command(name="unban", description="Debannit un membre du serveur")
+@bot.tree.command(name="unban", description="🔓 Debannit un membre du serveur")
 @app_commands.default_permissions(ban_members=True)
 @app_commands.describe(user_id="L'ID du membre a debannir", reason="La raison du deban")
 async def unban_member(
@@ -3178,7 +3109,7 @@ async def unban_member(
     await safe_followup(interaction, f"L'utilisateur `{target_id}` a ete debanni.")
 
 
-@bot.tree.command(name="raidmode", description="Active, desactive ou affiche l'etat de l'anti-raid")
+@bot.tree.command(name="raidmode", description="🛡️ Active, desactive ou affiche l'etat de l'anti-raid")
 @app_commands.default_permissions(manage_guild=True)
 @app_commands.describe(action="Choisis l'action a effectuer")
 @app_commands.choices(
@@ -3212,7 +3143,7 @@ async def raidmode(
     )
 
 
-@bot.tree.command(name="lockdown", description="Active ou retire le lockdown du serveur")
+@bot.tree.command(name="lockdown", description="🚨 Active ou retire le lockdown du serveur")
 @app_commands.default_permissions(manage_guild=True)
 @app_commands.describe(action="Choisis l'action a effectuer")
 @app_commands.choices(
