@@ -663,7 +663,7 @@ def build_antiraid_status_embed(guild: discord.Guild) -> discord.Embed:
     antiraid = get_antiraid_config()
     guild_state = get_antiraid_guild_state(guild.id)
     embed = discord.Embed(
-        title=f"Anti-raid - {guild.name}",
+        title=f"🛡️ Anti-raid - {guild.name}",
         color=discord.Color.red() if guild_state.get("lockdown_active") else discord.Color.blurple(),
         timestamp=datetime.now(timezone.utc),
     )
@@ -859,7 +859,7 @@ def build_server_stats_embed(guild: discord.Guild) -> discord.Embed:
     voice_members = sum(1 for member in members if member.voice and member.voice.channel)
 
     embed = discord.Embed(
-        title=f"Statistiques de {guild.name}",
+        title=f"📊 Statistiques de {guild.name}",
         color=discord.Color.blurple(),
         timestamp=datetime.now(timezone.utc),
     )
@@ -903,7 +903,7 @@ def build_online_embed(guild: discord.Guild) -> discord.Embed:
     }
 
     embed = discord.Embed(
-        title=f"Membres connectes - {guild.name}",
+        title=f"🟢 Membres connectes - {guild.name}",
         color=discord.Color.green(),
         timestamp=datetime.now(timezone.utc),
     )
@@ -934,7 +934,7 @@ def build_user_info_embed(member: discord.Member) -> discord.Embed:
         role_text += f" ... (+{len(roles) - 12})"
 
     embed = discord.Embed(
-        title=f"Infos membre - {member.display_name}",
+        title=f"👤 Infos membre - {member.display_name}",
         color=member.color if member.color != discord.Color.default() else discord.Color.blurple(),
         timestamp=datetime.now(timezone.utc),
     )
@@ -1500,6 +1500,35 @@ def get_warning_entries(user_id: int) -> List[Dict[str, str]]:
     return []
 
 
+def with_command_emoji(content: Optional[str], emoji: str = "✨") -> Optional[str]:
+    if content is None:
+        return None
+    stripped = content.strip()
+    if not stripped:
+        return content
+
+    known_prefixes = (
+        "✅",
+        "❌",
+        "⚠️",
+        "ℹ️",
+        "✨",
+        "🧹",
+        "🛡️",
+        "📊",
+        "👤",
+        "🏓",
+        "🎫",
+        "🔒",
+        "📌",
+        "📝",
+        "💳",
+    )
+    if stripped.startswith(known_prefixes):
+        return content
+    return f"{emoji} {content}"
+
+
 async def safe_defer(interaction: discord.Interaction, *, ephemeral: bool = True) -> bool:
     try:
         if not interaction.response.is_done():
@@ -1516,8 +1545,11 @@ async def safe_followup(
     *,
     embed: Optional[discord.Embed] = None,
     ephemeral: bool = True,
+    emoji: str = "✨",
 ) -> None:
     try:
+        if content and embed is None:
+            content = with_command_emoji(content, emoji=emoji)
         await interaction.followup.send(content=content, embed=embed, ephemeral=ephemeral)
     except discord.NotFound:
         logger.warning("Impossible d'envoyer la reponse de suivi, interaction expirée.")
@@ -2776,12 +2808,82 @@ async def ping_bot(interaction: discord.Interaction) -> None:
 
     latency_ms = round(bot.latency * 1000)
     embed = discord.Embed(
-        title="Ping du bot",
+        title="🏓 Ping du bot",
         description=f"Latence actuelle: **{latency_ms} ms**",
         color=discord.Color.green() if latency_ms < 200 else discord.Color.orange(),
         timestamp=datetime.now(timezone.utc),
     )
     await safe_followup(interaction, embed=embed)
+
+
+@bot.tree.command(name="purge", description="Supprime le nombre de messages demande dans le salon")
+@app_commands.default_permissions(manage_messages=True)
+@app_commands.describe(amount="Nombre de messages a supprimer (entre 1 et 100)")
+async def purge_messages(
+    interaction: discord.Interaction,
+    amount: app_commands.Range[int, 1, 100],
+) -> None:
+    if not await safe_defer(interaction):
+        return
+
+    channel = interaction.channel
+    if not interaction.guild or not isinstance(channel, discord.TextChannel):
+        await safe_followup(
+            interaction,
+            "Cette commande doit etre utilisee dans un salon texte du serveur.",
+            emoji="❌",
+        )
+        return
+
+    bot_member = interaction.guild.me
+    if bot_member is None or not channel.permissions_for(bot_member).manage_messages:
+        await safe_followup(
+            interaction,
+            "Je n'ai pas la permission de gerer les messages dans ce salon.",
+            emoji="❌",
+        )
+        return
+
+    try:
+        deleted_messages = await channel.purge(limit=amount, check=lambda message: not message.pinned)
+    except discord.Forbidden:
+        await safe_followup(
+            interaction,
+            "Je n'ai pas la permission de supprimer les messages dans ce salon.",
+            emoji="❌",
+        )
+        return
+    except discord.HTTPException:
+        await safe_followup(
+            interaction,
+            "La purge a echoue. Reessaie dans quelques secondes.",
+            emoji="❌",
+        )
+        return
+
+    deleted_count = len(deleted_messages)
+    if deleted_count == 0:
+        await safe_followup(
+            interaction,
+            "Aucun message supprimable n'a ete trouve dans les derniers messages.",
+            emoji="⚠️",
+        )
+        return
+
+    await send_log_message(
+        interaction.guild,
+        title="Purge effectuee",
+        description=(
+            f"{interaction.user.mention} a supprime **{deleted_count}** message(s) "
+            f"dans {channel.mention}."
+        ),
+        color=discord.Color.orange(),
+    )
+    await safe_followup(
+        interaction,
+        f"{deleted_count} message(s) ont ete supprimes dans {channel.mention}.",
+        emoji="🧹",
+    )
 
 
 @bot.tree.command(name="blacklist", description="Blacklist un membre du systeme de tickets")
